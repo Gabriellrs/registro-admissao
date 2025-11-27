@@ -14,19 +14,15 @@ import json
 # --- Configuração do Selenium ---
 
 def create_driver():
-    """Cria e configura o WebDriver do Selenium de forma otimizada."""
+    """Cria e configura o WebDriver do Selenium para modo headless."""
     options = webdriver.FirefoxOptions()
     options.add_argument("--headless")
-    # Aponta para o local exato do binário do Firefox no contêiner Docker
-    options.binary_location = "/opt/firefox/firefox"
-
-    # Aponta para o local exato do geckodriver no contêiner Docker
-    service = FirefoxService(executable_path="/usr/local/bin/geckodriver")
 
     try:
-        print("Iniciando o driver do Selenium de forma otimizada...")
-        # Usa o serviço e as opções para uma inicialização mais rápida
-        driver = webdriver.Firefox(service=service, options=options)
+        # No PythonAnywhere, pode ser necessário especificar o caminho do geckodriver.
+        # Por exemplo: webdriver.Firefox(options=options, executable_path='/home/YourUsername/drivers/geckodriver')
+        print("Iniciando o driver do Selenium...")
+        driver = webdriver.Firefox(options=options)
         return driver
     except Exception as e:
         print(f"Erro ao iniciar o WebDriver: {e}")
