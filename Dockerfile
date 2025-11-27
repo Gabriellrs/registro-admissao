@@ -1,7 +1,7 @@
 # Usar uma imagem base oficial do Python
 FROM python:3.10-slim
 
-# 1. Instalar dependências de sistema para o Firefox e ferramentas
+# 1. Instalar dependências de sistema para o Firefox e ferramentas (Force cache bust: 20251127.4)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     bzip2 \
@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfontconfig1 \
     libxtst6 \
     libx11-6 \
+    libxcomposite1 \
+    libgbm1 \
  && rm -rf /var/lib/apt/lists/*
 
 # 2. Baixar e instalar uma versão específica do Firefox ESR
