@@ -1,14 +1,24 @@
 # Usar uma imagem base oficial do Python
 FROM python:3.10-slim
 
-# Instalar o Firefox e outras dependências necessárias
+# 1. Instalar dependências de sistema para o Firefox e ferramentas
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    firefox-esr \
     wget \
+    bzip2 \
+    libxt6 \
+    libdbus-glib-1-2 \
+    libgtk-3-0 \
+    libasound2 \
  && rm -rf /var/lib/apt/lists/*
 
-# Baixar e instalar o geckodriver
-# Verifique a última versão em: https://github.com/mozilla/geckodriver/releases
+# 2. Baixar e instalar uma versão específica do Firefox ESR
+ENV FIREFOX_VERSION=115.6.0esr
+RUN wget --no-verbose -O /tmp/firefox.tar.bz2 "https://download-installer.cdn.mozilla.net/pub/firefox/releases/${FIREFOX_VERSION}/linux-x86_64/en-US/firefox-${FIREFOX_VERSION}.tar.bz2" \
+ && tar -xjf /tmp/firefox.tar.bz2 -C /opt/ \
+ && rm /tmp/firefox.tar.bz2 \
+ && ln -s /opt/firefox/firefox /usr/local/bin/firefox
+
+# 3. Baixar e instalar o geckodriver (mesma versão de antes)
 ENV GECKODRIVER_VERSION=v0.34.0
 RUN wget --no-verbose -O /tmp/geckodriver.tar.gz https://github.com/mozilla/geckodriver/releases/download/${GECKODRIVER_VERSION}/geckodriver-${GECKODRIVER_VERSION}-linux64.tar.gz \
  && tar -C /usr/local/bin -xzf /tmp/geckodriver.tar.gz \
@@ -22,13 +32,10 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Instalar as dependências do Python
-# Adicionamos --no-cache-dir para manter a imagem um pouco menor
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar o resto do código da aplicação para o diretório de trabalho
 COPY . .
 
 # Comando para iniciar a aplicação usando Gunicorn
-# O Render define a variável de ambiente PORT, e o Gunicorn irá se vincular a ela.
-# Usamos 0.0.0.0 para que o contêiner aceite conexões de fora.
 CMD ["gunicorn", "--bind", "0.0.0.0:10000", "selenium_scraper:app"]
