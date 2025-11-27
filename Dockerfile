@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libdbus-glib-1-2 \
     libgtk-3-0 \
     libasound2 \
+    libdbus-1-3 \
+    libfontconfig1 \
  && rm -rf /var/lib/apt/lists/*
 
 # 2. Baixar e instalar uma versão específica do Firefox ESR
@@ -25,6 +27,9 @@ RUN wget --no-verbose -O /tmp/geckodriver.tar.gz https://github.com/mozilla/geck
  && rm /tmp/geckodriver.tar.gz \
  && chmod +x /usr/local/bin/geckodriver
 
+# 4. Health check para garantir que os binários são executáveis
+RUN firefox --version && geckodriver --version
+
 # Definir o diretório de trabalho no contêiner
 WORKDIR /app
 
@@ -38,4 +43,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Comando para iniciar a aplicação usando Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "selenium_scraper:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--timeout", "120", "selenium_scraper:app"]
+
