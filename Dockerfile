@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libdbus-1-3 \
     libfontconfig1 \
     libxtst6 \
+    libx11-6 \
  && rm -rf /var/lib/apt/lists/*
 
 # 2. Baixar e instalar uma versão específica do Firefox ESR
