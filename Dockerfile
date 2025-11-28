@@ -4,31 +4,30 @@ FROM python:3.11-slim
 # Define o diretório de trabalho dentro do contêiner
 WORKDIR /usr/src/app
 
-# --- INSTALAÇÃO DO CHROMIUM E DEPENDÊNCIAS DE SISTEMA (CRÍTICO) ---
-# Instala pacotes essenciais, Chrome, e dependências de SO que faltavam (solução para Status Code 127).
+# --- INSTALAÇÃO DO CHROMIUM E DEPENDÊNCIAS DE SISTEMA (ROBUSTO) ---
+# O Google Chrome está causando problemas na instalação de chaves.
+# É mais seguro e leve usar o Chromium diretamente dos repositórios Debian.
+
+# 1. Instala pacotes essenciais, o navegador Chromium e suas dependências.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    # Pacotes básicos de rede e utilitários
     wget \
     gnupg \
-    # Dependências de sistema necessárias para o Chromium e o ChromeDriver
+    # Navegador Headless (Chromium) e seu driver de auto-descoberta
+    chromium \
+    chromium-driver \
+    # Dependências de SO para execução do navegador em modo headless
     libnss3 \
-    libgconf-2-4 \
-    libappindicator1 \
+    libappindicator3-1 \
     libasound2 \
     libatk1.0-0 \
     libgdk-pixbuf2.0-0 \
     libgtk-3-0 \
     libxss1 \
     fonts-liberation \
-    lsb-release \
     xdg-utils && \
-    # Baixa e adiciona a chave GPG do Google
-    wget -qO- https://dl-ssl.google.com/linux/chrome/deb/ stable/Release.gpg | gpg --dearmor > /etc/apt/keyrings/google-archive.gpg && \
-    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-archive.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
-    # Instala o Google Chrome
-    apt-get update && \
-    apt-get install -y google-chrome-stable --no-install-recommends && \
-    # Limpeza para reduzir o tamanho da imagem do Docker
+    # 2. Limpeza para reduzir o tamanho da imagem do Docker
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -42,12 +41,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # --- CONFIGURAÇÃO PARA O SELENIUM ---
-# Define a variável de ambiente para o binário do Chrome, essencial para o código Python
-ENV CHROME_BINARY_PATH="/usr/bin/google-chrome"
-ENV PATH="${PATH}:/usr/bin/"
+# Define a variável de ambiente para o binário do Chromium, se necessário (o Service() pode encontrar)
+ENV CHROME_BINARY_PATH="/usr/bin/chromium"
+ENV CHROMEDRIVER_PATH="/usr/lib/chromium/chromedriver"
+ENV PATH="${PATH}:/usr/lib/chromium/"
 
 # --- EXECUÇÃO ---
-# Expõe a porta que o Render/Gunicorn usará
 EXPOSE 8080 
-# Comando final de inicialização corrigido (usa porta 8080 fixa)
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "120", "selenium_scraper:app"]
