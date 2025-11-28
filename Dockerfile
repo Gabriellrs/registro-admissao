@@ -1,62 +1,53 @@
-# Usar uma imagem base oficial do Python
-FROM python:3.10-slim
+# Usa a imagem oficial do Python, que já vem com o sistema operacional Debian (Linux)
+FROM python:3.11-slim
 
-# 1. Instalar dependências de sistema para o Firefox e ferramentas
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Define o diretório de trabalho dentro do contêiner
+WORKDIR /usr/src/app
+
+# --- INSTALAÇÃO DO CHROMIUM E DEPENDÊNCIAS DE SISTEMA (CRÍTICO) ---
+# Instala pacotes essenciais, Chrome, e dependências de SO que faltavam (solução para Status Code 127).
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     wget \
-    bzip2 \
-    # Dependências do Firefox e do Geckodriver (CRÍTICO)
-    libxt6 \
-    libdbus-glib-1-2 \
-    libgtk-3-0 \
-    libasound2 \
-    libdbus-1-3 \
-    libfontconfig1 \
-    libxtst6 \
-    libx11-6 \
-    libxcomposite1 \
-    libgbm1 \
-    # Adicionando dependências comuns que causam falha 127 no Geckodriver
+    gnupg \
+    # Dependências de sistema necessárias para o Chromium e o ChromeDriver
     libnss3 \
-    libnss3-dev \
-    libsm6 \
-    libice6 \
-    libxrender1 \
-    libjpeg-dev \
-    # Limpeza
-    && rm -rf /var/lib/apt/lists/*
+    libgconf-2-4 \
+    libappindicator1 \
+    libasound2 \
+    libatk1.0-0 \
+    libgdk-pixbuf2.0-0 \
+    libgtk-3-0 \
+    libxss1 \
+    fonts-liberation \
+    lsb-release \
+    xdg-utils && \
+    # Baixa e adiciona a chave GPG do Google
+    wget -qO- https://dl-ssl.google.com/linux/chrome/deb/ stable/Release.gpg | gpg --dearmor > /etc/apt/keyrings/google-archive.gpg && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/google-archive.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
+    # Instala o Google Chrome
+    apt-get update && \
+    apt-get install -y google-chrome-stable --no-install-recommends && \
+    # Limpeza para reduzir o tamanho da imagem do Docker
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# 2. Baixar e instalar uma versão específica do Firefox ESR
-ENV FIREFOX_VERSION=115.6.0esr
-ENV PATH="/opt/firefox:$PATH"
-RUN wget --no-verbose -O /tmp/firefox.tar.bz2 "https://download-installer.cdn.mozilla.net/pub/firefox/releases/${FIREFOX_VERSION}/linux-x86_64/en-US/firefox-${FIREFOX_VERSION}.tar.bz2" \
-    && tar -xjf /tmp/firefox.tar.bz2 -C /opt/ \
-    && rm /tmp/firefox.tar.bz2 \
-    && ln -s /opt/firefox/firefox /usr/local/bin/firefox
-
-# 3. Baixar e instalar o geckodriver
-ENV GECKODRIVER_VERSION=v0.34.0
-RUN wget --no-verbose -O /tmp/geckodriver.tar.gz https://github.com/mozilla/geckodriver/releases/download/${GECKODRIVER_VERSION}/geckodriver-${GECKODRIVER_VERSION}-linux64.tar.gz \
-    && tar -C /usr/local/bin -xzf /tmp/geckodriver.tar.gz \
-    && rm /tmp/geckodriver.tar.gz \
-    && chmod +x /usr/local/bin/geckodriver
-
-# 4. Health check para garantir que os binários são executáveis
-RUN firefox --version && geckodriver --version
-
-# Definir o diretório de trabalho no contêiner
-WORKDIR /app
-
-# Copiar o arquivo de dependências primeiro para aproveitar o cache do Docker
+# --- DEPENDÊNCIAS DO PYTHON ---
+# Copia o arquivo de dependências e instala as libs Python
 COPY requirements.txt .
-
-# Instalar as dependências do Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar o resto do código da aplicação para o diretório de trabalho
+# --- CÓDIGO DA APLICAÇÃO ---
+# Copia todo o código da aplicação
 COPY . .
 
-# Comando para iniciar a aplicação usando Gunicorn
-# Usa a variável de ambiente $PORT do Render e um timeout ajustado
-EXPOSE 8080
-CMD ["gunicorn", "--bind", "0.0.0.0:${PORT}", "--timeout", "120", "selenium_scraper:app"]
+# --- CONFIGURAÇÃO PARA O SELENIUM ---
+# Define a variável de ambiente para o binário do Chrome, essencial para o código Python
+ENV CHROME_BINARY_PATH="/usr/bin/google-chrome"
+ENV PATH="${PATH}:/usr/bin/"
+
+# --- EXECUÇÃO ---
+# Expõe a porta que o Render/Gunicorn usará
+EXPOSE 8080 
+# Comando final de inicialização corrigido (usa porta 8080 fixa)
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "120", "selenium_scraper:app"]
