@@ -1,33 +1,61 @@
-# selenium_scraper.py
 import os
 from selenium import webdriver
+# Importa o serviço e as opções do Chrome
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.firefox.service import Service as FirefoxService
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from bs4 import BeautifulSoup
 import json
 
-# --- Configuração do Selenium ---
+# --- Configuração do Selenium (Adaptada para Render/Chromium) ---
 
 def create_driver():
-    """Cria e configura o WebDriver do Selenium para modo headless."""
-    options = webdriver.FirefoxOptions()
-    options.add_argument("--headless")
+    """Cria e configura o WebDriver do Selenium para modo headless usando Chromium."""
+    
+    # 1. Configura as opções do Chrome
+    chrome_options = Options()
+    chrome_options.add_argument("--headless") # Modo invisível
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    
+    # 2. Configuração dos caminhos para o Render
+    # O Render usa variáveis de ambiente para apontar para os binários do navegador
+    # Ex: /usr/local/bin/chromedriver ou paths específicos fornecidos pelo buildpack
+    CHROME_DRIVER_PATH = os.environ.get('CHROMEDRIVER_PATH')
+    CHROME_BINARY_PATH = os.environ.get('CHROME_BINARY_PATH')
+    
+    if CHROME_BINARY_PATH:
+        # Se estiver rodando no Render (ou outro ambiente cloud com binário customizado)
+        chrome_options.binary_location = CHROME_BINARY_PATH
+        print(f"Usando binário do Chrome em: {CHROME_BINARY_PATH}")
+    else:
+        # Fallback para execução local (se o Chrome estiver no PATH)
+        print("Usando Chrome no PATH local.")
 
     try:
-        # No PythonAnywhere, pode ser necessário especificar o caminho do geckodriver.
-        # Por exemplo: webdriver.Firefox(options=options, executable_path='/home/YourUsername/drivers/geckodriver')
-        print("Iniciando o driver do Selenium...")
-        driver = webdriver.Firefox(options=options)
+        if CHROME_DRIVER_PATH:
+            # Se o Render forneceu um caminho para o driver
+            service = Service(executable_path=CHROME_DRIVER_PATH)
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            print("Driver do Chrome inicializado usando Service com path customizado.")
+        else:
+            # Inicialização padrão (assume que o driver está no PATH ou usa a auto-descoberta)
+            driver = webdriver.Chrome(options=chrome_options)
+            print("Driver do Chrome inicializado de forma padrão.")
+            
         return driver
     except Exception as e:
-        print(f"Erro ao iniciar o WebDriver: {e}")
-        # Retornar o erro para que a API possa reportá-lo
-        raise RuntimeError(f"Falha ao iniciar o WebDriver: {e}")
+        print(f"Erro ao iniciar o WebDriver (Chrome): {e}")
+        # Retorna o erro para que a API possa reportá-lo
+        # Mensagem de erro mais amigável para o deploy.
+        raise RuntimeError(f"Falha ao iniciar o WebDriver. Verifique as dependências do Chrome/Chromium no ambiente: {e}")
 
 
 def fetch_data_with_selenium(driver, cpf_para_pesquisa):
@@ -38,7 +66,8 @@ def fetch_data_with_selenium(driver, cpf_para_pesquisa):
         print(f"Acessando a página para o CPF: {cpf_para_pesquisa}")
         driver.get(url)
 
-        wait = WebDriverWait(driver, 20)
+        # Aumentamos o tempo de espera, pois o ambiente de nuvem pode ser mais lento
+        wait = WebDriverWait(driver, 30) 
         iframe = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "iframe[src*='consulta-ato-pessoal']")))
         driver.switch_to.frame(iframe)
         
@@ -48,6 +77,7 @@ def fetch_data_with_selenium(driver, cpf_para_pesquisa):
         search_button = driver.find_element(By.ID, "pesquisaAtos:abrirAtos")
         search_button.click()
 
+        # Espera que algum TR apareça na tabela dentro do painel
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#panelGroup table tbody tr")))
         result_table = driver.find_element(By.ID, "panelGroup")
         
@@ -56,7 +86,7 @@ def fetch_data_with_selenium(driver, cpf_para_pesquisa):
 
     except TimeoutException:
         print("Tempo de espera excedido. A busca não retornou resultados.")
-        return None, "A busca não retornou resultados a tempo. Verifique o CPF ou tente novamente."
+        return None, "A busca não retornou resultados a tempo (Timeout). Verifique o CPF ou tente novamente."
     except Exception as e:
         print(f"Ocorreu um erro durante a raspagem com Selenium: {e}")
         return None, f"Erro inesperado durante a raspagem: {e}"
@@ -82,9 +112,12 @@ def extract_data_from_html(html_content):
     for row in rows:
         row_data = {}
         cells = row.find_all('td')
-        if len(cells) == len(headers):
+        # Garante que temos o mesmo número de células e cabeçalhos (evita erros em linhas de rodapé)
+        if len(cells) == len(headers): 
             for i, cell in enumerate(cells):
-                row_data[headers[i]] = cell.text.strip()
+                # Substitui `row_data[headers[i]] = cell.text.strip()` para lidar com casos em que `headers` pode ter valores vazios
+                header_key = headers[i] if headers[i] else f"Coluna_{i+1}"
+                row_data[header_key] = cell.text.strip()
             data.append(row_data)
 
     return data, None
@@ -140,7 +173,8 @@ def buscar_registro_selenium():
 
     except RuntimeError as e:
         # Captura o erro específico de falha ao iniciar o driver
-        return jsonify({"error": str(e)}), 503 # Service Unavailable
+        # Retorna 503 (Service Unavailable) para indicar falha na dependência externa
+        return jsonify({"error": str(e)}), 503 
     except Exception as e:
         # Captura outras exceções inesperadas
         print(f"Erro fatal na API: {e}")
@@ -150,6 +184,7 @@ def buscar_registro_selenium():
             print("Fechando o driver do Selenium.")
             driver.quit()
 
+# O Gunicorn usará este objeto 'app'
 # Para rodar localmente para teste:
 # if __name__ == '__main__':
 #     app.run(debug=True, port=5001)
